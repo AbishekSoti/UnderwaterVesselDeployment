@@ -1,0 +1,47 @@
+# Python and editors
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.idea/
+.vscode/
+.DS_Store
+
+# Private configuration
+.env
+.env.*
+*.local.*
+*.pem
+*.key
+
+# Datasets and feature caches
+data/
+datasets/
+cache/
+*.wav
+*.flac
+*.mp3
+*.npy
+*.npz
+
+# Model binaries
+*.pt
+*.pth
+*.ckpt
+*.joblib
+*.pkl
+*.onnx
+*.tflite
+
+# Generated builds and logs
+build/
+dist/
+*.log
+*.bin
+*.elf
+*.bit
+
+# Raw benchmark output
+benchmarks/results/*
+!benchmarks/results/.gitkeep
