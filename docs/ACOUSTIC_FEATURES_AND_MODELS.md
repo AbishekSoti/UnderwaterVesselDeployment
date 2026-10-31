@@ -5,20 +5,22 @@
 **Compiled:** 26 October 2026  
 **Status:** Historical configurations recovered from the two paper drafts and accompanying experiment code. **Not** a claim that all implementations or UniqueShip experiments are reproduced or complete.
 
-## 0. What to implement first on UniqueShip
+## 0. Current UniqueShip plan (revised 26 October 2026)
 
-**Stage 1: STFT + four classical models.** Use the *already downloaded* **UniqueShip 5-Class Balanced** release (213 h, five vessel-disjoint split repetitions). Do **not** use a random clip-level split.
+**Stage 1: STFT only, with statistics separately pooled across BOTH axes.** Use the downloaded **UniqueShip 5-Class Balanced** release (213 hours, five vessel-disjoint split repetitions). **Keep the predefined folds; never randomly re-split five-second clips.**
 
-| Order | Classifier | Frontend input | Classifier input | Historical comparison (ShipsEar) |
-|---:|---|---|---:|---|
-| 1 | Logistic Regression | STFT, time mean+std, train-only scaling | **256-D** | Pi 5 ShipsEar: 87.87% accuracy, 88.03% macro-F1 |
-| 2 | Linear SVM | Same | **256-D** | Pi 5 ShipsEar: 90.34% accuracy, 89.70% macro-F1 |
-| 3 | RBF-SVM | Same | **256-D** | Pi 5 ShipsEar: 98.88% accuracy, 98.83% macro-F1 |
-| 4 | MLP | Same | **256-D** | Pi 5 ShipsEar: 96.40% accuracy, 96.49% macro-F1 |
+| Model | scikit-learn estimator | Current 5-class input | Role |
+|---|---|---:|---|
+| 1. Logistic Regression | `LogisticRegression` | **1,206-D** | Regularised linear baseline |
+| 2. Nonlinear RBF SVM | `SVC(kernel="rbf")` (small-run exact) or `Nystroem + LinearSVC` (scalable approximation) | **1,206-D** | Nonlinear kernel decision boundary; **distinguish exact vs approximate results** |
+| 3. MLP | `MLPClassifier` | **1,206-D** | Dense nonlinear neural-network baseline |
+| 4. Histogram Gradient Boosting | `HistGradientBoostingClassifier` | **1,206-D** | Tree-ensemble nonlinear baseline, distinct model family |
 
-**Model identity matters:** Linear SVM and RBF-SVM are two **separate** models; together with logistic regression and MLP they are the **four classical classifiers** in the ISCAS paper. The two-layer CNN and Patch Transformer are the additional two, making six deployed models. A 4-layer CNN is also documented for DeepShip, but is not one of those four initial STFT classifiers.
+This **replaces the previous initial quartet** (Logistic Regression, Linear SVM, RBF-SVM, MLP) **for the new UniqueShip experiments only**. The historical ISCAS quartet and its **256-D temporal-only pooling** remain documented below and are not changed retroactively.
 
-**Do not transplant scores:** these are historical ShipsEar fixed-test-set results, **not UniqueShip results**. ShipsEar recording-level independence was not reconstructable. UniqueShip's fold CSVs should define membership and prevent MMSI leakage.
+**New pooling, not the historical one:** from a spectrogram with `F=128` frequency rows and `T=475` time frames, concatenate (i) per-frequency temporal mean, (ii) per-frequency temporal std, (iii) per-time frequency mean and (iv) per-time frequency std: `2F + 2T = 1,206` features. This preserves two *axis-wise marginal summaries*, **not full 2-D time-frequency interactions**. It is neither the original 256-D temporal-only pooling nor global pooling into just two/four scalar summaries.
+
+Executable script: `models/training/uniqueship/train_stft_classical.py`. Usage: `README_UNIQUESHIP_STFT.md` in the `docs/` folder.
 
 ## 1. Feature-size glossary
 
@@ -34,8 +36,7 @@ Notation:
 | **Mel spectrogram** | **256 × 494** | **512-D** | FFT 1024, hop 160, 256 Mel bands, power/dB, `center=False` | ShipsEar exploratory configuration; DeepShip paper also used **128 × 494 / 256-D** |
 | **MFCC** | **63 × 488** | **126-D** | FFT 2048, hop 160, 256 Mel bands → 64 coefficients, drop coefficient 0, `center=False` | ShipsEar / DeepShip historic 63-coefficient configuration |
 | **CQT** | **252 × 501** | **504-D** | hop 160, 36 bins/octave, 252 bins, minimum frequency 50 Hz | Historical high-resolution CQT; other CQT sweeps used fewer bins, e.g. 126 |
-| **Gammatone envelope** | **252 × 500** *calculated for a particular prototype* | **504-D** *if mean+std applied* | 252 ERB-spaced bands, 50–8000 Hz, 4th-order gammatone FIR impulse response ~0.05 s, Hilbert envelope, block-average at 160 samples, log1p | **Experimental/code setting, not a validated canonical paper result** |
-| **GFCC** | **TBD** | **2F once channel count is verified** | Gammatone-frequency cepstral coefficients | Mentioned in DeepShip feature experiments; **do not invent** coefficient count/shape |
+| **Gammatone envelope (custom implementation)** | **252 × 500** *for the documented implementation* | **504-D** *under historical time-only mean/std* | Custom ERB-spaced FIR Gammatone bank: 252 channels, 50–8000 Hz, 4th-order impulse response ~0.05 s, Hilbert envelope, 160-sample averaging, `log1p` | **Implemented in earlier experiments, not merely proposed or a prototype**. This is a code-level configuration; do not confuse with a fully verified final benchmark score. |
 | **CARFAC BM** | **100 × 490** | **200-D** | Basilar-membrane signal, historical CARFAC feature map | Earlier experiment/cache shape; **not yet run on UniqueShip** |
 | **CARFAC IHC** | **100 × 490** | **200-D** | Inner hair-cell signal, historical CARFAC feature map | Earlier experiment/cache shape; **not yet run on UniqueShip** |
 | **CARFAC LI** | **100 × 490** | **200-D** | Historical LI auditory stage | Used in ShipsEar classical experiments; **not in the corrected DeepShip CNN4 BM/IHC benchmark** |
@@ -66,7 +67,7 @@ UniqueShip provides 5-second clips at **20 kHz**. The historical dimension `(128
 - Temporal mean+std still gives **256-D** with 128 output channels.
 - The physical FFT window/hop durations change with sample rate; native-20-kHz and resampled-16-kHz settings should be registered as **distinct frontends**, never silently mixed.
 
-**Recommended first controlled run:** 20 kHz source → explicit, documented resample to **16 kHz** → exact historical STFT 128×475 → mean+std 256-D → four classifiers. Later compare a native-20-kHz frontend as a separate experiment. Do not use saved ShipsEar scalers, models or class mappings with UniqueShip.
+**Current controlled run:** 20 kHz source → explicit resample to **16 kHz** → the historical STFT map (128×475) → **new two-axis mean/std (1,206-D)** → four new classifiers (§0). The historical 256-D mean/std value above remains accurate **for the earlier temporal-only pooling**, not the new experiment. Later compare a native-20-kHz frontend as a separate experiment. Never reuse ShipsEar scalers or class mappings.
 
 ## 3. Historical model inventory
 
@@ -132,9 +133,9 @@ These are different datasets/class definitions/evaluation splits; do **not** ran
 
 ### Roadmap
 
-- **Now:** feature `STFT-128` + Logistic Regression, Linear SVM, RBF-SVM, MLP (256-D pooled inputs).
+- **Now:** `STFT-128` with **1,206-D axis-wise pooled features**, Logistic Regression, RBF-SVM (exact on quick subset; approximate kernel for full scale), MLP, and Histogram Gradient Boosting.
 - **Next:** CNN2 and Patch Transformer on raw 1×128×475 STFT maps; compare against the four baselines.
-- **Then:** Mel 256/128 variants, MFCC 63, CQT 252/126, and possibly Gammatone/GFCC as *explicit distinct configurations*.
+- **Then:** Mel 256/128 variants, MFCC 63, CQT 252/126 and the **existing custom Gammatone implementation** as explicit distinct feature configurations. GFCC is out of scope.
 - **CARFAC soon, but not part of stage 1:** BM/IHC, then LI/SPK where code and labels are verified. These may cost considerably more feature-generation time; cache per fold with provenance.
 - **Later:** four-layer DeepShip-style CNN, embedding/distillation experiments, and edge timing on representative hardware.
 
@@ -145,13 +146,13 @@ These are different datasets/class definitions/evaluation splits; do **not** ran
 1. *Towards Deployable Underwater Vessel Classification* (Soti et al., 2026), arXiv:2609.29179: <https://arxiv.org/abs/2609.29179> — ShipsEar/DeepShip, multiple representations, CNN2/CNN4, pooling, recording-level evaluation caveat.
 2. *Lightweight Underwater Acoustic Vessel Classification for Embedded Deployment* (Soti et al., ISCAS 2027 manuscript, Oct 2026) — four classical classifiers + CNN2 + Patch Transformer, STFT128×475, embedded Pi benchmarking. Source was the user's 20 Oct paper-text draft, not a verified journal publication.
 
-**Additional source for specific frontend settings:** historical `Audioclassification` experiment notebook code recovered from project conversation/library, including the exact `librosa` frontend constants listed in §1–2. A DeepShip CNN4 benchmark script lists `stft`, `mel`, `mfcc`, `cqt`, `gammatone`, `gfcc`, `bm`, `ihc`; earlier ShipsEar experiments additionally include `li` and `spk`.
+**Additional source for specific frontend settings:** historical `Audioclassification` experiment notebook code recovered from project conversation/library, including the exact `librosa` frontend constants listed in §1–2. A DeepShip CNN4 benchmark script included `stft`, `mel`, `mfcc`, `cqt`, `gammatone`, `bm`, `ihc` among the investigated frontends; earlier ShipsEar experiments additionally include `li` and `spk`. GFCC was only briefly explored and is intentionally excluded from this maintained reference.
 
 **Known unresolved items (verify against actual saved code/checkpoints before calling them canonical):**
 
 - Final MLP hidden-layer layout, activation, optimiser, and regularisation.
 - Final SVM `C`, `gamma` and exact preprocessing settings for each trained artifact; `C=10` comes from an older baseline, not a fully reconstructed final specification.
-- Exact GFCC frontend dimensionality and feature shape, plus whether Gammatone/GFCC caches were successfully generated in the final DeepShip split.
+- Reconcile which custom Gammatone configuration and caches belong to each historical run before claiming an exact final DeepShip test score.
 - Full CARFAC filterbank/channel-count/time-resolution parameter sets; the shapes given are historical cache shapes.
 - Mel and CQT variant names to distinguish 64/128/256 Mel and 126/252 CQT experiments.
 - UniqueShip 20→16 kHz resampling filter implementation and exact final fold mapping.

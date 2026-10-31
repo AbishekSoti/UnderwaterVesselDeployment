@@ -45,3 +45,29 @@ dist/
 # Raw benchmark output
 benchmarks/results/*
 !benchmarks/results/.gitkeep
+
+# ESP-IDF generated files
+firmware/**/build/
+firmware/**/sdkconfig
+firmware/**/sdkconfig.old
+firmware/**/managed_components/
+firmware/**/dependencies.lock
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Large ML files and datasets
+*.pt
+*.pth
+*.joblib
+*.wav
+*.npz
+
+# Local generated benchmark files
+results/raw/
+
+# Mac / IDE
+.DS_Store
+.idea/
